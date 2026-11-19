@@ -1,0 +1,60 @@
+# Transcription des cours dans le cloud (nuage.py) — à copier dans le dépôt GitHub sous
+#   .github/workflows/transcription.yml
+# Voir MODE-EMPLOI.md (même dossier). Les heures « cron » sont en UTC : Paris = UTC+1 l'hiver, UTC+2 l'été
+# (nuage.py raisonne toujours en heure de Paris ; seules les heures de lancement glissent d'1 h l'été).
+name: Transcription
+
+on:
+  schedule:
+    - cron: "7,37 16-21 * * *"   # 17 h 07 → 22 h 37 (Paris, hiver) toutes les 30 min : audios du soir, analyse de 21 h 40
+    - cron: "7 22,23 * * *"       # 23 h 07, 0 h 07
+    - cron: "7 1,3,5,7 * * *"     # 2 h 07, 4 h 07, 6 h 07, 8 h 07 : quota de la veille, Gemini moins chargé
+    - cron: "17 8-14 * * *"       # 9 h 17 → 15 h 17 : quota neuf, matinée américaine pas encore commencée
+    - cron: "0 6 1 * *"           # 1er du mois : signe de vie (GitHub coupe les tâches d'un dépôt public inactif 60 jours)
+  workflow_dispatch: {}           # bouton « Run workflow » pour lancer à la main
+
+concurrency:
+  group: transcription
+  cancel-in-progress: false       # jamais deux passages en même temps
+
+permissions:
+  contents: write                 # seulement pour le signe de vie mensuel
+
+jobs:
+  transcrire:
+    if: github.event.schedule != '0 6 1 * *'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 130
+    env:
+      RCLONE_CONFIG_DRIVE_TYPE: drive
+      RCLONE_CONFIG_DRIVE_SCOPE: drive
+      RCLONE_CONFIG_DRIVE_TOKEN: ${{ secrets.RCLONE_DRIVE_TOKEN }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+    steps:
+      - name: rclone
+        run: |
+          curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/v1.68.2/rclone-v1.68.2-linux-amd64.zip
+          unzip -q /tmp/rclone.zip -d /tmp
+          sudo install -m 755 /tmp/rclone-v1.68.2-linux-amd64/rclone /usr/local/bin/rclone
+      - name: Code commun depuis Drive
+        run: rclone copy "drive:Prépa — Système/code" code -q --exclude "*.cmd" --exclude "*.ps1"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Modules
+        run: pip install -q --disable-pip-version-check google-genai==2.25.0 imageio-ffmpeg mutagen tzdata httpx
+      - name: Transcription
+        run: python code/nuage.py
+
+  signe-de-vie:
+    if: github.event.schedule == '0 6 1 * *'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          date -u +%Y-%m-%d > signe-de-vie.txt
+          git config user.name "transcription"
+          git config user.email "transcription@users.noreply.github.com"
+          git add signe-de-vie.txt
+          git commit -m "signe de vie" && git push || true
