@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 130
     env:
+      TZ: Europe/Paris              # heures des journaux et des en-têtes de transcription à l'heure de Paris
       RCLONE_CONFIG_DRIVE_TYPE: drive
       RCLONE_CONFIG_DRIVE_SCOPE: drive
       RCLONE_CONFIG_DRIVE_TOKEN: ${{ secrets.RCLONE_DRIVE_TOKEN }}
@@ -39,7 +40,7 @@ jobs:
           sudo install -m 755 /tmp/rclone-v1.68.2-linux-amd64/rclone /usr/local/bin/rclone
       - name: Code commun depuis Drive
         run: rclone copy "drive:Prépa — Système/code" code -q --exclude "*.cmd" --exclude "*.ps1"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - name: Modules
@@ -51,7 +52,7 @@ jobs:
     if: github.event.schedule == '0 6 1 * *'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: |
           date -u +%Y-%m-%d > signe-de-vie.txt
           git config user.name "transcription"
