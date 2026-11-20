@@ -1,0 +1,43 @@
+# Décisions du Guichet appliquées dans le cloud (decisions_nuage.py) — à copier dans le dépôt GitHub sous
+#   .github/workflows/decisions.yml
+# Réveillé par le tableau de bord Apps Script (tableau-de-bord/) dès qu'un fichier apparaît dans
+# « Prépa — Arrivées/_Décisions » (vérification toutes les 5 min), ou par son bouton « Appliquer maintenant ».
+# Le lancement horaire n'est qu'un filet de sécurité (GitHub le retarde souvent) ; sans décision en attente, le
+# passage s'arrête en quelques secondes, sans monter Drive. Voir MODE-EMPLOI.md (même dossier).
+name: Décisions
+
+on:
+  workflow_dispatch: {}           # tableau de bord (API GitHub) ou bouton « Run workflow »
+  schedule:
+    - cron: "41 * * * *"          # filet de sécurité, une fois par heure
+
+concurrency:
+  group: decisions                # à part de la transcription : une transcription de 2 h ne bloque pas le rangement
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  appliquer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TZ: Europe/Paris
+      RCLONE_CONFIG_DRIVE_TYPE: drive
+      RCLONE_CONFIG_DRIVE_SCOPE: drive
+      RCLONE_CONFIG_DRIVE_TOKEN: ${{ secrets.RCLONE_DRIVE_TOKEN }}
+    steps:
+      - name: rclone et FUSE (Drive monté comme un dossier)
+        run: |
+          sudo apt-get install -y -qq fuse3 > /dev/null
+          curl -fsSL -o /tmp/rclone.zip https://downloads.rclone.org/v1.68.2/rclone-v1.68.2-linux-amd64.zip
+          unzip -q /tmp/rclone.zip -d /tmp
+          sudo install -m 755 /tmp/rclone-v1.68.2-linux-amd64/rclone /usr/local/bin/rclone
+      - name: Code commun depuis Drive
+        run: rclone copy "drive:Prépa — Système/code" code -q --exclude "*.cmd" --exclude "*.ps1"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Décisions
+        run: python code/decisions_nuage.py
